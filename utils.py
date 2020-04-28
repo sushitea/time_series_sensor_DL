@@ -88,14 +88,13 @@ def process_dataset_file(data, label):
 
     # All sensor channels are normalized
     # data_x = normalize(data_x, NORM_MAX_THRESHOLDS, NORM_MIN_THRESHOLDS)
-    print ('data_x: ', data_x.shape, ' data_y: ',data_y.shape)
     return data_x, data_y
 
-def feature_selection(data, label_x='LLA', label_y='gestures'):
+def feature_selection(data, label_x='RLA', label_y='gestures'):
     if label_x == 'LLA':
         data_x = data[:,89:102]
     elif label_x == 'RLA':
-        data_x = data[:,63:78]
+        data_x = data[:,63:76]
     
     if label_y == 'gestures':
         data_y = data[:,244]
