@@ -95,29 +95,11 @@ def feature_selection(data, label_x='RLA', label_y='gestures'):
         data_x = data[:,89:102]
     elif label_x == 'RLA':
         data_x = data[:,63:76]
+    elif label_x == 'ALL':
+        data_x == data_x[:,:]
     
     if label_y == 'gestures':
-        data_y = data[:,244]
+        data_y = data[:,-1]
     elif label_y == 'locomotion':
         data_y = data[:,243]
     return data_x, data_y
-
-def normalize(data, max_list, min_list):
-    """Normalizes all sensor channels
-    :param data: numpy integer matrix
-        Sensor data
-    :param max_list: numpy integer array
-        Array feature_selectioncontaining maximums values for every one of the 113 sensor channels
-    :param min_list: numpy integer array
-        Array containing minimum values for every one of the 113 sensor channels
-    :return:
-        Normalized sensor data
-    """
-    max_list, min_list = np.array(max_list), np.array(min_list)
-    diffs = max_list - min_list
-    for i in np.arange(data.shape[1]):
-        data[:, i] = (data[:, i]-min_list[i])/diffs[i]
-    #     Checking the boundaries
-    data[data > 1] = 0.99
-    data[data < 0] = 0.00
-    return data
