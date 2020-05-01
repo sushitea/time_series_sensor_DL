@@ -122,7 +122,7 @@ def main():
     normalized_total_data = scaler.transform(total_data)
     final_data = np.concatenate((normalized_total_data,total_label),axis=1)
     print ('Final Data shape:', final_data.shape)
-    save_np_data(val_data,TOTAL_TARGET_FILENAME)
+    save_np_data(final_data,TOTAL_TARGET_FILENAME)
 
 if __name__ == "__main__":
     main()

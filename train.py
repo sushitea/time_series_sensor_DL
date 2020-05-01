@@ -30,42 +30,24 @@ def pd_dataframe_construction(data_txt):
     print (label.info())
 
 def main():
-    print ('[INFO] Data Preprocessing')
+    print ('[INFO] Data Input Pipeline')
     txt_list = os.listdir(DATASET_ROOT)
     train_txt = os.path.join(DATASET_ROOT,txt_list[0])
     val_txt = os.path.join(DATASET_ROOT,txt_list[1])
-
-    train_data = np.loadtxt(train_txt)
-    val_data = np.loadtxt(val_txt)
-    print ('train data:', train_data.shape)
-    print ('val data:', val_data.shape)
-    total_dataset = np.concatenate((train_data,val_data),axis=0)
-    total_data = total_dataset[:,:13]
-    total_label = total_dataset[:,-1:]
-
-    scaler = MinMaxScaler()
-
-    min_col = total_data.min(axis=0)
-    max_col = total_data.max(axis=0)
-
-    # print(total_data.shape)
-    # print(total_label, total_label.shape)
-
-    sklearn_normalized_data = scaler.transform(total_data)
-    print('sklearn_normalized_data:' ,sklearn_normalized_data)
-    print('shape:', sklearn_normalized_data.shape)
+    total_txt = os.path.join(DATASET_ROOT,txt_list[2])
     
-    # save sklearn normalized data
-    # np.savetxt('sklearn_normalized_data.txt',sklearn_normalized_data,fmt='%1.4f')
-    # print(mean_data.shape)
+    print('Reading: ', val_txt)
+    total_dataset = np.loadtxt(val_txt)
+    print ('total data shape:', total_dataset.shape)
 
+    total_data = total_dataset[:,:13]
+    total_label = total_dataset[:,-1]
+    print('data shape:', total_data.shape)
+    print('label shape:', total_label.shape)
 
+    print('[INFO] Model initialization')
 
-
-
-
-    # pd_dataframe_construction(train_set_list)
-
+    print('[INFO] Model training')
 
 if __name__ == '__main__':
     main()
