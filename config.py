@@ -1,3 +1,7 @@
+EXP_NAME = 'Non_Augmentation_CNN'
+
+INPUT_SHAPE = (None,13,1)
+OUTPUT_SHAPE = (None,18,1)
 BATCH_SIZE = 64
 BUFFER_SIZE = 100
 

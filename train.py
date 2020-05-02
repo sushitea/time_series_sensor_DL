@@ -23,6 +23,7 @@ def sliding_window(data,label):
     pass
 
 def main():
+    #-----Input Preprocessing-----#
     print ('[INFO] Data Input Pipeline')
     txt_list = os.listdir(DATASET_ROOT)
     train_txt = os.path.join(DATASET_ROOT,txt_list[0])
@@ -40,37 +41,56 @@ def main():
     val_data = val_dataset[:,:13]
     val_label = val_dataset[:,-1]
 
-    # total_data = total_dataset[:,:13]
-    # total_label = total_dataset[:,-1]
-
     # TODO: Sliding window data augmentation
     train_data = np.expand_dims(train_data,axis=2)
-    print(train_data.shape,train_label.shape,val_data.shape,val_label.shape)
+    val_data = np.expand_dims(val_data,axis=2)
     
     tf_train = tf.data.Dataset.from_tensor_slices((train_data,train_label))
     tf_val = tf.data.Dataset.from_tensor_slices((val_data,val_label))
-    
-    
 
     # tf dataset config
     tf_train = tf_train.shuffle(buffer_size=BUFFER_SIZE)
     tf_train = tf_train.batch(BATCH_SIZE)
     tf_train = tf_train.prefetch(1)
+    tf_val = tf_val.batch(BATCH_SIZE)
 
     for data,label in tf_train.take(1):
         print ('Data:',data.shape)
 
+    #-----Model Initialization & Config-----#
     print('[INFO] Model initialization')
     model = conv1D()
     model.compile(
         optimizer=tf.optimizers.Adam(learning_rate=LR),
-        loss=tf.losses.CategoricalCrossentropy(), 
-        metrics=[[tf.keras.metrics.Accuracy()]]
+        loss=tf.losses.SparseCategoricalCrossentropy()
     )
+    model.build(INPUT_SHAPE)
+    model.summary()
+
+    #-----TF Callbacks-----#
+    EXP_NAME = 'No_sliding_window_CNN1D'
+    LOG_NAME = EXP_NAME + '_' + str(BATCH_SIZE) + '_' + str(LR) + '_' + str(NUM_EPOCHS)
+    log_dir = 'logs/' + LOG_NAME
+    tf_callback = [
+        tf.keras.callbacks.TensorBoard(log_dir=log_dir, update_freq='epoch'),
+        tf.keras.callbacks.EarlyStopping(monitor='val_loss',patience=20, verbose=1),
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath='weights.{epoch:02d}-{val_loss:.2f}.hdf5',
+            monitor='val_loss',
+            verbose=1,
+            save_weights_only=False,
+            save_best_only=True
+        )
+    ]
+
+    #-----Model Training-----#
     print('[INFO] Model training')
-    model.fit(
+    history = model.fit(
         tf_train,
-        epochs = NUM_EPOCHS
+        epochs = NUM_EPOCHS,
+        validation_data = tf_val,
+        verbose=1,
+        callbacks=tf_callback
     )
 if __name__ == '__main__':
     main()
