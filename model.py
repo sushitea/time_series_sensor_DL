@@ -11,8 +11,8 @@ class conv1D(tf.keras.Model):
     self.conv5 = tf.keras.layers.Conv1D(256,3,activation=tf.nn.relu)
     self.conv6 = tf.keras.layers.Conv1D(128,3,activation=tf.nn.relu)
     self.flatten = tf.keras.layers.Flatten()
-    self.dense1 = tf.keras.layers.Dense(1024, activation=tf.nn.relu)
-    self.dense2 = tf.keras.layers.Dense(18, activation=tf.nn.softmax)
+    self.dense1 = tf.keras.layers.Dense(1024,activation=tf.nn.relu)
+    self.dense2 = tf.keras.layers.Dense(18,activation=tf.nn.softmax)
     
   def call(self, inputs, training=False):
     x = self.conv1(inputs)

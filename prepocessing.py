@@ -5,7 +5,7 @@ import tensorflow as tf
 
 from sklearn.preprocessing import MinMaxScaler
 from io import StringIO
-from utils import *
+from preprocessing_utils import *
 
 DATASET_DIR = '/home/xy/research/dataset/OpportunityUCIDataset/dataset'
 SAVE_TXT_DIR = '/home/xy/research/dataset/OpportunityUCIDataset/dataset/RLA_dataset'
@@ -15,6 +15,7 @@ TOTAL_TARGET_FILENAME = 'RLA_total.txt'
 LABEL = 'gestures'
 NB_SENSOR_CHANNELS = 13
 
+# This set of configuration follows the guidelines of the OPPORTUNITY challenges
 TRAIN_LIST = [
     'S1-Drill.dat',
     'S1-ADL1.dat',
@@ -112,8 +113,8 @@ def main():
     total_data = total_dataset[:,:13]
     total_label = total_dataset[:,13]
     total_label = np.expand_dims(total_label, axis=1)
-    # print('Total data:', total_data.shape, ', Total label:', total_label.shape)
-    # print('Total dataset size:', total_dataset.shape)
+    print('Total data:', total_data.shape, ', Total label:', total_label.shape)
+    print('Total dataset size:', total_dataset.shape)
 
     # Total data normalization
     # TODO: check if the normalization is based on full array? Normalization should be done using each 3 columns
@@ -121,8 +122,8 @@ def main():
     scaler.fit(total_data)
     normalized_total_data = scaler.transform(total_data)
     final_data = np.concatenate((normalized_total_data,total_label),axis=1)
-    print ('Final Data shape:', final_data.shape)
-    save_np_data(final_data,TOTAL_TARGET_FILENAME)
+    print ('Final Data shape:', normalized_total_data.shape)
+    save_np_data(normalized_total_data,TOTAL_TARGET_FILENAME)
 
 if __name__ == "__main__":
     main()

@@ -91,12 +91,18 @@ def process_dataset_file(data, label):
     return data_x, data_y
 
 def feature_selection(data, label_x='RLA', label_y='gestures'):
-    if label_x == 'LLA':
-        data_x = data[:,89:102]
-    elif label_x == 'RLA':
-        data_x = data[:,63:76]
-    elif label_x == 'ALL':
-        data_x == data_x[:,:]
+    if label_x == 'FULL_BODY': # 113 channel without quartenion
+        data_x == data_x[:,:] # TODO: correct columns
+    elif label x == 'UPPER_BODY': # 5 IMUS
+        data_x = data_x # TODO: correct columns
+    elif label_x == 'LEFT_UPPER_BODY': # 3 IMUS
+        data_x = data_x # TODO: correct columns
+    elif label_x == 'RIGHT_UPPER_BODY': # 3 IMUS
+        data_x = data_x # TODO: correct columns
+    elif label_x == 'SINGLE_LEFT_HAND': # 1 IMU
+        data_x = data[:,89:102] # LLA
+    elif label_x == 'SINGLE_RIGHT_HAND': # 1 IMU 
+        data_x = data[:,63:76] # RLA
     
     if label_y == 'gestures':
         data_y = data[:,-1]
