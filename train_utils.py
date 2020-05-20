@@ -14,4 +14,6 @@ def stride_sliding_window(np_array,window_length,window_stride):
 def stride_sliding_window_y(np_array,window_length,window_stride):
     y_list =[]
     y_list.append(np_array[window_length-1::window_stride])
+
     return np.array(y_list)
+

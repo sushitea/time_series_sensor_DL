@@ -31,12 +31,12 @@ def main():
     val_label = val_dataset[:,-1]
 
     # TODO: Sliding window data augmentation
-    # train_data = np.expand_dims(train_data,axis=2)
-    # val_data = np.expand_dims(val_data,axis=2)
     sliding_train_data = stride_sliding_window(train_data,WINDOW_LENGTH,WINDOW_STRIDE)
     sliding_val_data = stride_sliding_window(val_data,WINDOW_LENGTH,WINDOW_STRIDE)
     sliding_train_label = np.squeeze(stride_sliding_window_y(train_label,WINDOW_LENGTH,WINDOW_STRIDE),axis=0)
     sliding_val_label = np.squeeze(stride_sliding_window_y(val_label,WINDOW_LENGTH,WINDOW_STRIDE),axis=0)
+    # sliding_train_data = np.expand_dims(sliding_train_data,axis=3)
+    # sliding_val_data = np.expand_dims(sliding_val_data,axis=3)
     
     print ('[INFO]traindata:{},trainlabel:{},valdata:{},vallabel:{}'
         .format(sliding_train_data.shape,sliding_train_label.shape,sliding_val_data.shape,sliding_val_label.shape))
@@ -44,7 +44,7 @@ def main():
     tf_train = tf.data.Dataset.from_tensor_slices((sliding_train_data,sliding_train_label))
     tf_val = tf.data.Dataset.from_tensor_slices((sliding_val_data,sliding_val_label))
 
-    '''
+    
     # tf dataset config
     tf_train = tf_train.shuffle(buffer_size=BUFFER_SIZE)
     tf_train = tf_train.batch(BATCH_SIZE)
@@ -53,10 +53,10 @@ def main():
 
     for data,label in tf_train.take(1):
         print ('Data:',data.shape)
-
+    
     #-----Model Initialization & Config-----#
     print('[INFO] Model initialization')
-    model = conv1D()
+    model = test_model()
     model.compile(
         optimizer=tf.optimizers.Adam(learning_rate=LR),
         loss=tf.losses.SparseCategoricalCrossentropy(),
@@ -66,7 +66,6 @@ def main():
     model.summary()
 
     #-----TF Callbacks-----#
-    EXP_NAME = 'No_sliding_window_CNN1D'
     LOG_NAME = EXP_NAME + '_' + str(BATCH_SIZE) + '_' + str(LR) + '_' + str(NUM_EPOCHS)
     log_dir = 'logs/' + LOG_NAME
     tf_callback = [
@@ -108,6 +107,6 @@ def main():
     plt.xlabel('epoch')
     plt.legend(['train', 'test'], loc='upper left')
     plt.show()
-    '''
+    
 if __name__ == '__main__':
     main()
