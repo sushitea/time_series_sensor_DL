@@ -74,6 +74,7 @@ def process_dataset_file(data, label):
 
     # Select correct columns
     # data = select_columns_opp(data)
+    
     data_x, data_y = feature_selection(data)
     # print ('data_x: ', data_x.shape, ' data_y: ',data_y.shape)
     # Colums are segmentd into features and labels
@@ -90,22 +91,39 @@ def process_dataset_file(data, label):
     # data_x = normalize(data_x, NORM_MAX_THRESHOLDS, NORM_MIN_THRESHOLDS)
     return data_x, data_y
 
-def feature_selection(data, label_x='RLA', label_y='gestures'):
+def feature_selection(data, label_x='FULL_BODY', label_y='gestures'):
+
     if label_x == 'FULL_BODY': # 113 channel without quartenion
-        data_x == data_x[:,:] # TODO: correct columns
-    elif label x == 'UPPER_BODY': # 5 IMUS
+        features_delete = np.array([0])
+        features_delete = np.concatenate([features_delete,np.arange(46,50)])
+        features_delete = np.concatenate([features_delete, np.arange(59,63)])
+        features_delete = np.concatenate([features_delete, np.arange(72,76)])
+        features_delete = np.concatenate([features_delete, np.arange(85,89)])
+        features_delete = np.concatenate([features_delete, np.arange(98,102)])
+        features_delete = np.concatenate([features_delete, np.array([117])])
+        features_delete = np.concatenate([features_delete, np.arange(133,243)])
+        features_delete = np.concatenate([features_delete, np.arange(244,249)])
+        data_x = np.delete(data, features_delete, 1)
+
+    elif label_x == 'UPPER_BODY': # 5 IMUS
         data_x = data_x # TODO: correct columns
+
     elif label_x == 'LEFT_UPPER_BODY': # 3 IMUS
         data_x = data_x # TODO: correct columns
+
     elif label_x == 'RIGHT_UPPER_BODY': # 3 IMUS
         data_x = data_x # TODO: correct columns
+
     elif label_x == 'SINGLE_LEFT_HAND': # 1 IMU
         data_x = data[:,89:102] # LLA
+
     elif label_x == 'SINGLE_RIGHT_HAND': # 1 IMU 
         data_x = data[:,63:76] # RLA
     
     if label_y == 'gestures':
         data_y = data[:,-1]
+
     elif label_y == 'locomotion':
         data_y = data[:,243]
+
     return data_x, data_y

@@ -1,10 +1,12 @@
+ROOT = '/home/xy/research/dataset/OpportunityUCIDataset/dataset/'
+DATASET = 'FULL_BODY'
 EXP_NAME = 'Sliding_window_CNN1D'
 
 WINDOW_LENGTH = 24
 WINDOW_STRIDE = int(WINDOW_LENGTH/2)
 
-INPUT_SHAPE = (None,13,1)
-OUTPUT_SHAPE = (None,18,1)
+# INPUT_SHAPE = (None,13,1)
+# OUTPUT_SHAPE = (None,18,1)
 BATCH_SIZE = 64
 BUFFER_SIZE = 100
 

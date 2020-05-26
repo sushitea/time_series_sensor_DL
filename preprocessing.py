@@ -9,11 +9,11 @@ from preprocessing_utils import *
 
 DATASET_DIR = '/home/xy/research/dataset/OpportunityUCIDataset/dataset'
 SAVE_TXT_DIR = '/home/xy/research/dataset/OpportunityUCIDataset/dataset/RLA_dataset'
-TRAIN_TARGET_FILENAME = 'RLA_train.txt'
-VAL_TARGET_FILENAME = 'RLA_val.txt'
-TOTAL_TARGET_FILENAME = 'RLA_total.txt'
+TRAIN_TARGET_FILENAME = 'FULL_BODY_train.txt'
+VAL_TARGET_FILENAME = 'FULL_BODY_val.txt'
+TOTAL_TARGET_FILENAME = 'FULL_BODY.txt'
 LABEL = 'gestures'
-NB_SENSOR_CHANNELS = 13
+NB_SENSOR_CHANNELS = 113
 
 # This set of configuration follows the guidelines of the OPPORTUNITY challenges
 TRAIN_LIST = [
@@ -49,7 +49,7 @@ def read_data(data,label):
         print ('[INFO] reading data file: {0}'.format(data))
         filename = data.split('/')[-1].split('.')[0]
         np_data = np.loadtxt(data, delimiter=' ')
-        x,y = process_dataset_file(np_data,label) # desfault to LLA & ML_both hand
+        x,y = process_dataset_file(np_data,label)
         data_x = np.vstack((data_x, x))
         data_y = np.concatenate([data_y, y])
         data_y = np.expand_dims(data_y,axis =1)
@@ -102,16 +102,14 @@ def main():
         temp_val_data = read_data(val_set,LABEL)
         val_data = np.concatenate((val_data,temp_val_data),axis=0)
 
-    print('Train size: ',train_data.shape)
-    print('Val size: ',val_data.shape)
     save_np_data(train_data,TRAIN_TARGET_FILENAME)
     save_np_data(val_data,VAL_TARGET_FILENAME)
     print('[INFO] Normalize Dataset.')
 
     # Total data construction
     total_dataset = np.concatenate((train_data,val_data), axis=0)
-    total_data = total_dataset[:,:13]
-    total_label = total_dataset[:,13]
+    total_data = total_dataset[:,:-1]
+    total_label = total_dataset[:,-1]
     total_label = np.expand_dims(total_label, axis=1)
     print('Total data:', total_data.shape, ', Total label:', total_label.shape)
     print('Total dataset size:', total_dataset.shape)

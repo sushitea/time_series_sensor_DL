@@ -8,7 +8,7 @@ from model import *
 from train_utils import *
 from train_config import *
 
-DATASET_ROOT = '/home/xy/research/dataset/OpportunityUCIDataset/dataset/RLA_dataset'
+DATASET_ROOT = os.path.join(ROOT,DATASET)
 NUM_TRAINING_SAMPLES = 557963
 
 def main():
@@ -19,15 +19,15 @@ def main():
     val_txt = os.path.join(DATASET_ROOT,txt_list[1])
     total_txt = os.path.join(DATASET_ROOT,txt_list[2])
     
-    print('[INFO] Reading: ', total_txt)
-    total_dataset = np.loadtxt(total_txt)
+    print('[INFO] Reading: ', val_txt)
+    total_dataset = np.loadtxt(val_txt)
     print ('[INFO] Total Data Shape:', total_dataset.shape)
     train_dataset = total_dataset[:NUM_TRAINING_SAMPLES,:]
     val_dataset = total_dataset[NUM_TRAINING_SAMPLES:,:]
     
-    train_data = train_dataset[:,:13]
+    train_data = train_dataset[:,:]
     train_label = train_dataset[:,-1]
-    val_data = val_dataset[:,:13]
+    val_data = val_dataset[:,:]
     val_label = val_dataset[:,-1]
 
     # TODO: Sliding window data augmentation
@@ -56,14 +56,13 @@ def main():
     
     #-----Model Initialization & Config-----#
     print('[INFO] Model initialization')
-    model = test_model()
+    model = convLSTM()
     model.compile(
         optimizer=tf.optimizers.Adam(learning_rate=LR),
         loss=tf.losses.SparseCategoricalCrossentropy(),
         metrics=['accuracy']
     )
-    model.build(INPUT_SHAPE)
-    model.summary()
+    # model.summary()
 
     #-----TF Callbacks-----#
     LOG_NAME = EXP_NAME + '_' + str(BATCH_SIZE) + '_' + str(LR) + '_' + str(NUM_EPOCHS)
@@ -88,7 +87,7 @@ def main():
         epochs = NUM_EPOCHS,
         validation_data = tf_val,
         verbose=1,
-        callbacks=tf_callback
+        #callbacks=tf_callback
     )
 
     print('[INFO] Matplotlib Loss Visualization')
