@@ -40,6 +40,7 @@ class convLSTM(tf.keras.Model):
     self.conv2 = tf.keras.layers.Conv1D(64,5,activation=tf.nn.relu)
     self.conv3 = tf.keras.layers.Conv1D(64,5,activation=tf.nn.relu)
     self.conv4 = tf.keras.layers.Conv1D(64,5,activation=tf.nn.relu)
+    
     self.lstm1 = tf.keras.layers.LSTM(128,return_sequences=True)
     self.lstm2 = tf.keras.layers.LSTM(128)
     self.flatten = tf.keras.layers.Flatten()
@@ -51,8 +52,8 @@ class convLSTM(tf.keras.Model):
     x = self.conv3(x)
     x = self.conv4(x)
     
-    x = self.lstm1(x)
-    x = self.lstm2(x)
+    # x = self.lstm1(x)
+    # x = self.lstm2(x)
     x = self.flatten(x)
     x = self.dense1(x)
     
