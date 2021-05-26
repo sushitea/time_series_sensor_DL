@@ -1,158 +1,180 @@
 import os
-import numpy as np 
+import csv
+import numpy as np
+import pandas as pd 
+import seaborn as sns
 import matplotlib.pyplot as plt
-import tensorflow as tf 
+import sklearn.metrics as metrics
 
-from sklearn.preprocessing import MinMaxScaler
-from model import *
-from train_utils import *
-from train_config import *
+from datetime import datetime
+from sklearn.metrics import classification_report,confusion_matrix
 
-DATASET_ROOT = os.path.join(ROOT,DATASET)
-NUM_TRAINING_SAMPLES = 557963
+import torch
+from utils import *
+from configs import *
+from models import DeepConvLSTM
 
-loss_history = []
-
-def train_step(data,labels,model,loss_obj,optimizer):
-    with tf.GradientTape() as tape:
-        predictions = model(data, training=True)
-        loss = loss_obj(labels, predictions)
-    gradients = tape.gradient(loss, model.trainable_variables)
-    optimizer.apply_gradients(zip(gradients,model.trainable_variables))
-
-@tf.function
-def test_step(data,labels,model,loss_obj):
-    predictions = model(data, training=False)
-    t_loss = loss_obj(labels, predictions)
 
 def main():
-    #-----Input Preprocessing-----#
-    print ('[INFO] Data Input Pipeline')
-    txt_list = os.listdir(DATASET_ROOT)
-    train_txt = os.path.join(DATASET_ROOT,txt_list[0])
-    val_txt = os.path.join(DATASET_ROOT,txt_list[1])
-    total_txt = os.path.join(DATASET_ROOT,txt_list[2])
+    # --- initialize training device --- #
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    mode = 'fullsensor'
+    exp_name = 'fl-gamma5_fullsensor'
+    remove_null = False
+    print('device:', device)
     
-    print('[INFO] Reading: ', val_txt)
-    total_dataset = np.loadtxt(val_txt)
-    print ('[INFO] Total Data Shape:', total_dataset.shape)
-    train_dataset = total_dataset[:NUM_TRAINING_SAMPLES,:]
-    val_dataset = total_dataset[NUM_TRAINING_SAMPLES:,:]
+    if mode == 'upperbody':
+        n_channels = 45
+    elif mode == 'leftupperbody' or mode == 'rightupperbody':
+        n_channels = 27
+    elif mode == 'fullsensor':
+        n_channels = 113
+
+    # --- initialize dataset --- #
+    X_train, y_train = load_data(mode,'train',len_seq,stride,remove=remove_null)
+    X_val, y_val = load_data(mode,'val',len_seq,stride,remove=remove_null)
+    train_stats = np.unique([a for y in y_train for a in y],return_counts=True)[1]
+    val_stats = np.unique([a for y in y_val for a in y],return_counts=True)[1]
+    print('Training set statistics:')
+    print(len(train_stats),'classes with distribution',train_stats)
+    print('Validation set statistics:')
+    print(len(val_stats),'classes with distribution',val_stats)
+
+    # --- initialize model --- #
+    net = DeepConvLSTM(n_channels=n_channels)
+    net.apply(init_weights)
+    net.to(device)
+
+    train_on_gpu = torch.cuda.is_available()
     
-    train_data = train_dataset[:,:]
-    train_label = train_dataset[:,-1]
-    val_data = val_dataset[:,:]
-    val_label = val_dataset[:,-1]
+    weight_decay = 1e-5*lr*batch_size*(50/batchlen)
+    opt = torch.optim.Adam(net.parameters(),lr=lr,weight_decay=weight_decay,amsgrad=True)
+    scheduler = torch.optim.lr_scheduler.StepLR(opt,10) # Learning rate scheduler to reduce LR every 100 epochs
 
-    # TODO: Sliding window data augmentation
-    sliding_train_data = stride_sliding_window(train_data,WINDOW_LENGTH,WINDOW_STRIDE)
-    sliding_val_data = stride_sliding_window(val_data,WINDOW_LENGTH,WINDOW_STRIDE)
-    sliding_train_label = np.squeeze(stride_sliding_window_y(train_label,WINDOW_LENGTH,WINDOW_STRIDE),axis=0)
-    sliding_val_label = np.squeeze(stride_sliding_window_y(val_label,WINDOW_LENGTH,WINDOW_STRIDE),axis=0)
-    # sliding_train_data = np.expand_dims(sliding_train_data,axis=3)
-    # sliding_val_data = np.expand_dims(sliding_val_data,axis=3)
+    weights = torch.tensor([max(train_stats)/i for i in train_stats])
+    print('weights:',weights)
+    if train_on_gpu:
+        weights = weights.cuda()
+
+    criterion = nn.CrossEntropyLoss(weight=weights)
+    criterion.to(device)
+    val_criterion = nn.CrossEntropyLoss()
+    val_criterion.to(device)
+    # criterion = FocalLoss(class_num=18,gamma=5)
+    # val_criterion = FocalLoss(class_num=18,gamma=5)
+    early_stopping = EarlyStopping(patience=patience, verbose=False)
+   
+    # --- check if log.csv available, if available,then remove --- #
+    csv_path = '/home/xy/research/master-research/sensor-based-human-activity-recognition/log.csv'
+    if os.path.isfile(csv_path):
+        os.remove(csv_path)
+
+    # --- training --- #
+    print('Starting training at',datetime.now())
+    start_time=datetime.now()
+
+    with open('log.csv', 'w', newline='') as csvfile:
+        for e in range(num_epochs):
+            train_losses = []
+            net.train() # Setup network for training
+            for batch in iterate_minibatches_2D(X_train, y_train, num_batches=num_batches, batchsize=1000, stride=stride, batchlen=batchlen, drop_last=True, shuffle=True):
+                x,y,pos= batch
+                inputs, targets = torch.from_numpy(x), torch.from_numpy(y) # Get torch tensors.
+                opt.zero_grad() # Clear gradients in optimizer
+                if pos==0:
+                    h = net.init_hidden(inputs.size()[0]) # If we are at the beginning of a metabatch, init lstm hidden states.
+                h = tuple([each.data for each in h])  # Get rid of gradients attached to hidden and cell states of the LSTM       
+                if (torch.cuda.is_available()):
+                    inputs,targets = inputs.cuda(),targets.cuda()
+                output, h = net(inputs,h,inputs.size()[0]) # Run inputs through network
+                loss = criterion(output.double(), targets.long()) 
+                loss.backward()
+                opt.step()
+                train_losses.append(loss.item())
+            val_losses = []
+            net.eval() # Setup network for evaluation
+            top_classes = []
+            targets_cumulative = []
+            with torch.no_grad():
+                for batch in iterate_minibatches_2D(X_val, y_val, num_batches=num_batches_val, batchsize=val_batch_size, stride=stride, batchlen=batchlen, drop_last=False, shuffle=True):
+                    x,y,pos=batch
+                    inputs, targets = torch.from_numpy(x), torch.from_numpy(y)
+                    targets_cumulative.extend([y for y in y])
+                    if pos == 0:
+                        val_h = net.init_hidden(inputs.size()[0]) # Init lstm at start of each metabatch
+                    if (torch.cuda.is_available()):
+                        inputs,targets = inputs.cuda(),targets.cuda()
+                    output, val_h = net(inputs,val_h,inputs.size()[0])
+                    val_loss = val_criterion(output, targets.long())
+                    val_losses.append(val_loss.item())
+                    top_p, top_class = output.topk(1,dim=1)
+                    top_classes.extend([top_class.item() for top_class in top_class.cpu()])
+            equals = [top_classes[i] == target for i,target in enumerate(targets_cumulative)]
+            val_accuracy = np.mean(equals)
+
+            f1score = metrics.f1_score(targets_cumulative, top_classes, average='weighted')
+            f1macro = metrics.f1_score(targets_cumulative, top_classes, average='macro')
+            scheduler.step()
+            print('Epoch {}/{}, Train loss: {:.4f}, Val loss: {:.4f}, Acc: {:.2f}, f1: {:.2f}, Macro f1: {:.2f}'.format(e+1,num_epochs,np.mean(train_losses),np.mean(val_losses),val_accuracy,f1score,f1macro))
+            writer = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            writer.writerow([np.mean(train_losses),np.mean(val_losses),val_accuracy,f1score,f1macro])
+            early_stopping(np.mean(val_losses), net)
+            if early_stopping.early_stop:
+                print("Stopping training, validation loss has not decreased in {} epochs.".format(patience))
+                break
+
+    print('Training finished at ',datetime.now())
+    print('Total time elapsed during training:',(datetime.now()-start_time).total_seconds(),'seconds')
     
-    print ('[INFO]traindata:{},trainlabel:{},valdata:{},vallabel:{}'
-        .format(sliding_train_data.shape,sliding_train_label.shape,sliding_val_data.shape,sliding_val_label.shape))
+    X_test, y_test = load_data(mode,'test',len_seq,stride,remove=remove_null)
+
+    print('Starting testing at', datetime.now())
+    start_time=datetime.now()
+    criterion = nn.CrossEntropyLoss()
+    # criterion = FocalLoss(class_num=18,gamma=5)
+    if(train_on_gpu):
+        net.cuda()
+    net.eval()
+
+    val_losses = []
+    test_accuracy=0
+    f1score=0
+    f1macro=0
+    targets_cumulative = []
+    top_classes = []
+
+    with torch.no_grad():
+        for batch in iterate_minibatches_test(X_test, y_test, len_seq, stride=1):
+            x,y,pos=batch
+            inputs, targets = torch.from_numpy(x), torch.from_numpy(y)
+            targets_cumulative.extend([y for y in y])
+
+            if(train_on_gpu):
+                targets,inputs = targets.cuda(),inputs.cuda()
+            if pos == 0:
+                test_h = net.init_hidden(inputs.size()[0])
+
+            output, test_h = net(inputs,test_h,inputs.size()[0])
+            val_loss = criterion(output, targets.long())
+            val_losses.append(val_loss.item())
+            top_p, top_class = output.topk(1,dim=1)
+            top_classes.extend([p.item() for p in top_class])
+
+    print('Finished testing at', datetime.now())
+    print('Total time elapsed during testing:', (datetime.now()-start_time).total_seconds(),'seconds')
+
+    f1score = metrics.f1_score(targets_cumulative, top_classes, average='weighted')
+    classreport = classification_report(targets_cumulative, top_classes,target_names=opp_class_names)
+    confmatrix = confusion_matrix(targets_cumulative, top_classes,normalize='true')
+    print('#--- TESTING REPORT ---#')
+    print(classreport)
+
+    plot_data(exp_name=exp_name, save_fig=True)
+    df_cm = pd.DataFrame(confmatrix, index=opp_class_names,columns=opp_class_names)
+    plt.figure(10,figsize=(15,12))
+    confusion_matrix_fg = sns.heatmap(df_cm,annot=True,fmt='.2f',cmap='Purples')
+    confusion_matrix_figure = confusion_matrix_fg.get_figure()    
+    confusion_matrix_figure.savefig("/home/xy/research/master-research/sensor-based-human-activity-recognition/exp_results/{}/confusion_matrix.png".format(exp_name), dpi=400)
     
-    tf_train = tf.data.Dataset.from_tensor_slices((sliding_train_data,sliding_train_label))
-    tf_val = tf.data.Dataset.from_tensor_slices((sliding_val_data,sliding_val_label))
-
-    
-    # tf dataset config
-    tf_train = tf_train.shuffle(buffer_size=BUFFER_SIZE)
-    tf_train = tf_train.batch(BATCH_SIZE)
-    tf_train = tf_train.prefetch(1)
-    tf_val = tf_val.batch(BATCH_SIZE)
-
-    for data,label in tf_train.take(1):
-        print ('Data:', data.shape)
-    
-    #-----Model Initialization & Config-----#
-    print('[INFO] Model initialization')
-    model = convLSTM()
-    model.compile(
-        optimizer=tf.optimizers.Adam(learning_rate=LR),
-        loss=tf.losses.SparseCategoricalCrossentropy(),
-        metrics=['accuracy']
-    )
-    model.summary()
-
-    loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
-    optimizer = tf.keras.optimizers.Adam(learning_rate=LR)
-
-    train_loss = tf.keras.metrics.Mean(name='train_loss')
-    train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
-
-    test_loss = tf.keras.metrics.Mean(name='test_loss')
-    test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='test_accuracy')
-
-    #-----TF Callbacks-----#
-    LOG_NAME = EXP_NAME + '_' + str(BATCH_SIZE) + '_' + str(LR) + '_' + str(NUM_EPOCHS)
-    log_dir = 'logs/' + LOG_NAME
-    tf_callback = [
-        tf.keras.callbacks.TensorBoard(log_dir=log_dir, update_freq='epoch'),
-        tf.keras.callbacks.EarlyStopping(monitor='val_loss',patience=20, verbose=1),
-        tf.keras.callbacks.ModelCheckpoint(
-            filepath='weights.{epoch:02d}-{val_loss:.2f}.hdf5',
-            monitor='val_loss',
-            verbose=1,
-            save_weights_only=False,
-            save_best_only=True
-        )
-    ]
-
-    #----- Model Training -----#
-    print('[INFO] Model training')
-    print('[INFO] Experiment parameters: ', log_dir)
-    history = model.fit(
-        tf_train,
-        epochs = NUM_EPOCHS,
-        validation_data = tf_val,
-        verbose=1,
-        #callbacks=tf_callback
-    )
-    #----- Model Training -----#
-
-    # print('[INFO] Matplotlib Loss Visualization')
-    # plt.plot(history.history['accuracy'])
-    # plt.plot(history.history['val_accuracy'])
-    # plt.title('model accuracy')
-    # plt.ylabel('accuracy')
-    # plt.xlabel('epoch')
-    # plt.legend(['train', 'test'], loc='upper left')
-    # plt.show()
-    # # summarize history for loss
-    # plt.plot(history.history['loss'])
-    # plt.plot(history.history['val_loss'])
-    # plt.title('model loss')
-    # plt.ylabel('loss')
-    # plt.xlabel('epoch')
-    # plt.legend(['train', 'test'], loc='upper left')
-    # plt.show()
-    
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-
-# eager training
-#-----Train with tf.eager execution-----#
-    # print('[INFO] Training')
-    # for epoch in range (NUM_EPOCHS):
-    #     train_loss.reset_states()
-    #     train_accuracy.reset_states()
-    #     test_loss.reset_states()
-    #     test_accuracy.reset_states()
-        
-    #     for data, labels in tf_train:
-    #         train_step(data,labels,model,loss_object,optimizer)
-        
-    #     for test_data, test_labels in tf_val:
-    #         test_step(test_data,test_labels,model,loss_object)
-
-    #     template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}'
-    #     print(template.format(epoch + 1,
-    #                     train_loss.result(),
-    #                     train_accuracy.result() * 100,
-    #                     test_loss.result(),
-    #                     test_accuracy.result() * 100))
-#-----Train with tf.eager execution-----#

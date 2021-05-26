@@ -1,127 +1,265 @@
 import os
-import tqdm
-import numpy as np 
-import tensorflow as tf 
+import zipfile
+import argparse
+import numpy as np
+import _pickle as cp
+import urllib.request
 
-from sklearn.preprocessing import MinMaxScaler
-from io import StringIO
-from preprocessing_utils import *
+from io import BytesIO
+from pandas import Series
 
-DATASET_DIR = '/home/xy/research/dataset/OpportunityUCIDataset/dataset'
-SAVE_TXT_DIR = '/home/xy/research/dataset/OpportunityUCIDataset/dataset/RLA_dataset'
-TRAIN_TARGET_FILENAME = 'FULL_BODY_train.txt'
-VAL_TARGET_FILENAME = 'FULL_BODY_val.txt'
-TOTAL_TARGET_FILENAME = 'FULL_BODY.txt'
-LABEL = 'gestures'
-NB_SENSOR_CHANNELS = 113
+NORM_MAX_THRESHOLDS = [
+    3000,   3000,   3000,   3000,   3000,   3000,   3000,   3000,   3000,
+    3000,   3000,   3000,   3000,   3000,   3000,   3000,   3000,   3000,
+    3000,   3000,   3000,   3000,   3000,   3000,   3000,   3000,   3000,
+    3000,   3000,   3000,   3000,   3000,   3000,   3000,   3000,   3000,
+    3000,   3000,   3000,   10000,  10000,  10000,  1500,   1500,   1500,
+    3000,   3000,   3000,   10000,  10000,  10000,  1500,   1500,   1500,
+    3000,   3000,   3000,   10000,  10000,  10000,  1500,   1500,   1500,
+    3000,   3000,   3000,   10000,  10000,  10000,  1500,   1500,   1500,
+    3000,   3000,   3000,   10000,  10000,  10000,  1500,   1500,   1500,
+    250,    25,     200,    5000,   5000,   5000,   5000,   5000,   5000,
+    10000,  10000,  10000,  10000,  10000,  10000,  250,    250,    25,
+    200,    5000,   5000,   5000,   5000,   5000,   5000,   10000,  10000,
+    10000,  10000,  10000,  10000,  250
+    ]
 
-# This set of configuration follows the guidelines of the OPPORTUNITY challenges
-TRAIN_LIST = [
-    'S1-Drill.dat',
-    'S1-ADL1.dat',
-    'S1-ADL2.dat',
-    'S1-ADL3.dat',
-    'S1-ADL4.dat',
-    'S1-ADL5.dat',
-    'S2-Drill.dat',
-    'S2-ADL1.dat',
-    'S2-ADL2.dat',
-    'S2-ADL3.dat',
-    'S3-Drill.dat',
-    'S3-ADL1.dat',
-    'S3-ADL2.dat',
-    'S3-ADL3.dat'
+NORM_MIN_THRESHOLDS = [
+    -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,
+    -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,
+    -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,
+    -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,  -3000,
+    -3000,  -3000,  -3000,  -10000, -10000, -10000, -1000,  -1000,  -1000,
+    -3000,  -3000,  -3000,  -10000, -10000, -10000, -1000,  -1000,  -1000,
+    -3000,  -3000,  -3000,  -10000, -10000, -10000, -1000,  -1000,  -1000,
+    -3000,  -3000,  -3000,  -10000, -10000, -10000, -1000,  -1000,  -1000,
+    -3000,  -3000,  -3000,  -10000, -10000, -10000, -1000,  -1000,  -1000,
+    -250,   -100,   -200,   -5000,  -5000,  -5000,  -5000,  -5000,  -5000,
+    -10000, -10000, -10000, -10000, -10000, -10000, -250,   -250,   -100,
+    -200,   -5000,  -5000,  -5000,  -5000,  -5000,  -5000,  -10000, -10000,
+    -10000, -10000, -10000, -10000, -250
+    ] 
+
+IMU_MAX_THRESHOLDS = [
+    3000,   3000,   3000,   10000,  10000,  10000,  1500,   1500,   1500,
+    3000,   3000,   3000,   10000,  10000,  10000,  1500,   1500,   1500,
+    3000,   3000,   3000,   10000,  10000,  10000,  1500,   1500,   1500,
+    3000,   3000,   3000,   10000,  10000,  10000,  1500,   1500,   1500,
+    3000,   3000,   3000,   10000,  10000,  10000,  1500,   1500,   1500
 ]
 
-VAL_LIST = [
-    'S2-ADL4.dat',
-    'S2-ADL5.dat',
-    'S3-ADL4.dat',
-    'S3-ADL5.dat'
-]
+IMU_MIN_THRESHOLDS = [
+    -3000,  -3000,  -3000,  -10000, -10000, -10000, -1000,  -1000,  -1000,
+    -3000,  -3000,  -3000,  -10000, -10000, -10000, -1000,  -1000,  -1000,
+    -3000,  -3000,  -3000,  -10000, -10000, -10000, -1000,  -1000,  -1000,
+    -3000,  -3000,  -3000,  -10000, -10000, -10000, -1000,  -1000,  -1000,
+    -3000,  -3000,  -3000,  -10000, -10000, -10000, -1000,  -1000,  -1000
+] 
 
-def read_data(data,label):
+def select_columns_opp(data,mode='fullsensor'):
     
-    data_x = np.empty((0, NB_SENSOR_CHANNELS))
-    data_y = np.empty((0))
-    
+    if mode == 'fullsensor':
+        # included-excluded
+        features_delete = np.arange(46, 50)
+        features_delete = np.concatenate([features_delete, np.arange(59, 63)])
+        features_delete = np.concatenate([features_delete, np.arange(72, 76)])
+        features_delete = np.concatenate([features_delete, np.arange(85, 89)])
+        features_delete = np.concatenate([features_delete, np.arange(98, 102)])
+        features_delete = np.concatenate([features_delete, np.arange(134, 243)])
+        features_delete = np.concatenate([features_delete, np.arange(244, 249)])
+        return np.delete(data, features_delete, 1)
+
+    elif mode == 'upperbody':
+        column_to_discard = np.arange(1,37)
+        column_to_discard = np.concatenate([column_to_discard, np.arange(46, 50)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(59, 63)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(72, 76)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(85, 89)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(98, 243)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(244, 249)])
+        return np.delete(data, column_to_discard, 1)
+
+    elif mode == 'leftupperbody':
+        column_to_discard = np.arange(1,37)
+        column_to_discard = np.concatenate([column_to_discard, np.arange(46, 76)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(85, 89)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(98, 243)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(244, 249)])
+        return np.delete(data, column_to_discard, 1)
+
+    elif mode == 'rightupperbody':
+        column_to_discard = np.arange(1,37)
+        column_to_discard = np.concatenate([column_to_discard, np.arange(46, 50)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(59, 63)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(72, 243)])
+        column_to_discard = np.concatenate([column_to_discard, np.arange(244, 249)])
+        return np.delete(data, column_to_discard, 1)
+
+def normalize(data, max_list, min_list):
+    max_list, min_list = np.array(max_list), np.array(min_list)
+    diffs = max_list - min_list
+    for i in np.arange(data.shape[1]):
+        data[:, i] = (data[:, i]-min_list[i])/diffs[i]
+    #     Checking the boundaries
+    data[data > 1] = 0.99
+    data[data < 0] = 0.00
+    return data
+
+def divide_x_y(data, label):
+    data_x = data[:, 1:-2]
+    if label not in ['locomotion', 'gestures']:
+            raise RuntimeError("Invalid label: '%s'" % label)
+    if label == 'locomotion':
+        data_y = data[:, -2]  # Locomotion label
+    elif label == 'gestures':
+        data_y = data[:, -1]  # Gestures label
+
+    return data_x, data_y
+
+def adjust_idx_labels(data_y, label):
+    if label == 'locomotion':  # Labels for locomotion are adjusted
+        data_y[data_y == 4] = 3
+        data_y[data_y == 5] = 4
+    elif label == 'gestures':  # Labels for gestures are adjusted
+        data_y[data_y == 406516] = 1
+        data_y[data_y == 406517] = 2
+        data_y[data_y == 404516] = 3
+        data_y[data_y == 404517] = 4
+        data_y[data_y == 406520] = 5
+        data_y[data_y == 404520] = 6
+        data_y[data_y == 406505] = 7
+        data_y[data_y == 404505] = 8
+        data_y[data_y == 406519] = 9
+        data_y[data_y == 404519] = 10
+        data_y[data_y == 406511] = 11
+        data_y[data_y == 404511] = 12
+        data_y[data_y == 406508] = 13
+        data_y[data_y == 404508] = 14
+        data_y[data_y == 408512] = 15
+        data_y[data_y == 407521] = 16
+        data_y[data_y == 405506] = 17
+    return data_y
+
+def check_data(data_set):
+    print('Checking dataset {0}'.format(data_set))
+    data_dir, data_file = os.path.split(data_set)
+    # When a directory is not provided, check if dataset is in the data directory
+    if data_dir == "" and not os.path.isfile(data_set):
+        new_path = os.path.join(os.path.split(__file__)[0], "data", data_set)
+        if os.path.isfile(new_path) or data_file == 'OpportunityUCIDataset.zip':
+            data_set = new_path
+
+    if (not os.path.isfile(data_set)) and data_file == 'OpportunityUCIDataset.zip':
+        print('... dataset path {0} not found'.format(data_set))
+        import urllib
+        origin = (
+            'https://archive.ics.uci.edu/ml/machine-learning-databases/00226/OpportunityUCIDataset.zip'
+        )
+        if not os.path.exists(data_dir):
+            print('... creating directory {0}'.format(data_dir))
+            os.makedirs(data_dir)
+        print('... downloading data from {0}'.format(origin))
+        urllib.request.urlretrieve(origin, data_set)
+
+    return data_dir
+
+def process_dataset_file(data, label, mode, upper_threshold, lower_threshold):
+    # mode: fullsensor, upperbody, leftupperbody, rightupperbody
+    data = select_columns_opp(data, mode=mode)
+    data_x, data_y = divide_x_y(data, label)
+    data_y = adjust_idx_labels(data_y, label)
+    data_y = data_y.astype(int)
+    data_x = np.array([Series(i).interpolate() for i in data_x.T]).T
+    data_x[np.isnan(data_x)] = 0
+    data_x = normalize(data_x, upper_threshold, lower_threshold)
+
+    return data_x, data_y
+
+def split_dataset():
+
+    train_runs = ['S1-Drill','S1-ADL1','S1-ADL2','S1-ADL3','S1-ADL4','S2-Drill','S2-ADL1','S2-ADL2','S3-Drill','S3-ADL1','S3-ADL2','S2-ADL3','S3-ADL3']
+    val_runs = ['S1-ADL5']
+    test_runs = ['S2-ADL4','S2-ADL5','S3-ADL4','S3-ADL5']
+
+    train_files = ['OpportunityUCIDataset/dataset/{}.dat'.format(run) for run in train_runs]
+    val_files = ['OpportunityUCIDataset/dataset/{}.dat'.format(run) for run in val_runs]
+    test_files = ['OpportunityUCIDataset/dataset/{}.dat'.format(run) for run in test_runs]
+
+    return train_files,val_files,test_files
+
+def generate_data(dataset, folder_name, label, upper_threshold, lower_threshold):
+    data_dir = check_data(dataset)
+
+    train_files, test_files, val_files = split_dataset()
+
+    zf = zipfile.ZipFile(dataset)
+    mode = folder_name
+
     try:
-        print ('[INFO] reading data file: {0}'.format(data))
-        filename = data.split('/')[-1].split('.')[0]
-        np_data = np.loadtxt(data, delimiter=' ')
-        x,y = process_dataset_file(np_data,label)
-        data_x = np.vstack((data_x, x))
-        data_y = np.concatenate([data_y, y])
-        data_y = np.expand_dims(data_y,axis =1)
-        final_data = np.concatenate((data_x,data_y),axis=1)
-        
-    except KeyError as e:
-        print(e)
+        os.mkdir('data')
+    except FileExistsError: # Remove data if already there.
+        for file in os.scandir('data'):
+            if 'data' in file.name:
+                os.remove(file.path)
 
-    print ('[INFO] {0}: x.shape:{1}, y.shape:{2}'.format(filename,data_x.shape,data_y.shape))
+    print('Generating training files')
+    for i,filename in enumerate(train_files):
+        try:
+            data = np.loadtxt(BytesIO(zf.read(filename)))
+            print('... file {} -> train_data_{}'.format(filename,i))
+            x, y = process_dataset_file(data, label, mode, upper_threshold, lower_threshold)
+            with open('{}/train_data_{}'.format(folder_name,i),'wb') as f:
+                cp.dump((x,y),f)
+        except KeyError:
+            print('ERROR: Did not find {} in zip file'.format(filename))
 
-    return final_data
+    print('Generating validation files')
+    for i,filename in enumerate(val_files):
+        try:
+            data = np.loadtxt(BytesIO(zf.read(filename)))
+            print('... file {} -> val_data_{}'.format(filename,i))
+            x, y = process_dataset_file(data, label, mode, upper_threshold, lower_threshold)
+            with open('{}/val_data_{}'.format(folder_name,i),'wb') as f:
+                cp.dump((x,y),f)
+        except KeyError:
+            print('ERROR: Did not find {} in zip file'.format(filename))
 
-def save_np_data(data,target_filename):
-    dir_check = os.path.isdir(SAVE_TXT_DIR)
-    if dir_check == False:
-        os.mkdir(SAVE_TXT_DIR)
-  
-    np.savetxt(os.path.join(SAVE_TXT_DIR,target_filename),data,fmt='%1.4f')
-    print('[INFO] {0} is saved.'.format(target_filename))
+    print('Generating testing files')
+    for i,filename in enumerate(test_files):
+        try:
+            data = np.loadtxt(BytesIO(zf.read(filename)))
+            print('... file {} -> test_data_{}'.format(filename,i))
+            x, y = process_dataset_file(data, label, mode, upper_threshold, lower_threshold)
+            with open('{}/test_data_{}'.format(folder_name,i),'wb') as f:
+                cp.dump((x,y),f)
+        except KeyError:
+            print('ERROR: Did not find {} in zip file'.format(filename))
 
 def main():
-    data_list = os.listdir(DATASET_DIR)
-    data_file_list = []
-    train_data = np.empty((0, NB_SENSOR_CHANNELS+1))
-    val_data = np.empty((0, NB_SENSOR_CHANNELS+1))
+    ROOT = os.getcwd()
+    PATH = '/home/xy/dataset/opportunity/OpportunityUCIDataset.zip'
+    SAVE_FOLDER_NAME = 'rightupperbody'
+    label = 'gestures'
 
-    for data in data_list:
-        data_file_list.append(data)
+    if SAVE_FOLDER_NAME == 'fullsensor':
+        NB_SENSOR_CHANNELS = 113
+        max_threshold = NORM_MAX_THRESHOLDS
+        min_threshold = NORM_MIN_THRESHOLDS
+    elif SAVE_FOLDER_NAME == 'upperbody':
+        NB_SENSOR_CHANNELS = 45
+        max_threshold = IMU_MAX_THRESHOLDS
+        min_threshold = IMU_MIN_THRESHOLDS
+    elif SAVE_FOLDER_NAME == 'leftupperbody':
+        NB_SENSOR_CHANNELS = 27
+        max_threshold = IMU_MAX_THRESHOLDS[:27]
+        min_threshold = IMU_MIN_THRESHOLDS[:27]
+    elif SAVE_FOLDER_NAME == 'rightupperbody':
+        NB_SENSOR_CHANNELS = 27
+        max_threshold = IMU_MAX_THRESHOLDS[:27]
+        min_threshold = IMU_MIN_THRESHOLDS[:27]
     
-    data_file_list.sort() # sort the list according to alphabetical order
-    data_file_list = data_file_list[:-8] # final usage data list (left out with s4 data)
-
-    # create train list and val list
-    train_set_list = list(set(data_file_list).intersection(set(TRAIN_LIST)))
-    train_set_list.sort()
-    val_set_list = list(set(data_file_list).intersection(set(VAL_LIST)))
-    val_set_list.sort()
-
-    for i, train_set in enumerate(train_set_list):
-        train_set_list[i] = os.path.join(DATASET_DIR,train_set)
-    
-    for i, val_set in enumerate(val_set_list):
-        val_set_list[i] = os.path.join(DATASET_DIR,val_set)
-
-    for train_set in train_set_list:
-        temp_train_data = read_data(train_set,LABEL)
-        train_data = np.concatenate((train_data,temp_train_data),axis=0)
-
-    for val_set in val_set_list:
-        temp_val_data = read_data(val_set,LABEL)
-        val_data = np.concatenate((val_data,temp_val_data),axis=0)
-
-    save_np_data(train_data,TRAIN_TARGET_FILENAME)
-    save_np_data(val_data,VAL_TARGET_FILENAME)
-    print('[INFO] Normalize Dataset.')
-
-    # Total data construction
-    total_dataset = np.concatenate((train_data,val_data), axis=0)
-    total_data = total_dataset[:,:-1]
-    total_label = total_dataset[:,-1]
-    total_label = np.expand_dims(total_label, axis=1)
-    print('Total data:', total_data.shape, ', Total label:', total_label.shape)
-    print('Total dataset size:', total_dataset.shape)
-
-    # Total data normalization
-    # TODO: check if the normalization is based on full array? Normalization should be done using each 3 columns
-    scaler = MinMaxScaler()
-    scaler.fit(total_data)
-    normalized_total_data = scaler.transform(total_data)
-    final_data = np.concatenate((normalized_total_data,total_label),axis=1)
-    print ('Final Data shape:', normalized_total_data.shape)
-    save_np_data(normalized_total_data,TOTAL_TARGET_FILENAME)
+    generate_data(PATH,SAVE_FOLDER_NAME,label,max_threshold,min_threshold)
 
 if __name__ == "__main__":
     main()
+    
